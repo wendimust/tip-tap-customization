@@ -29,6 +29,7 @@ export const LineHeightButton = forwardRef(
     {
       editor: providedEditor,
       level,
+      lineHeight,
       text,
       hideWhenUnavailable = false,
       onToggled,
@@ -51,6 +52,7 @@ export const LineHeightButton = forwardRef(
     } = useLineHeight({
       editor,
       level,
+      lineHeight,
       hideWhenUnavailable,
       onToggled,
     });
@@ -67,6 +69,8 @@ export const LineHeightButton = forwardRef(
     if (!isVisible) {
       return null;
     }
+
+    const displayText = text ?? label;
 
     return (
       <Button
@@ -87,8 +91,10 @@ export const LineHeightButton = forwardRef(
         {children ?? (
           <>
             <Icon className="tiptap-button-icon" />
-            {text && <span className="tiptap-button-text">{text}</span>}
-            {showShortcut && (
+            {displayText && (
+              <span className="tiptap-button-text">{displayText}</span>
+            )}
+            {showShortcut && shortcutKeys && (
               <LineHeightShortcutBadge
                 level={level}
                 shortcutKeys={shortcutKeys}

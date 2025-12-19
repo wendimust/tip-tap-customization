@@ -8,7 +8,7 @@ import { useTiptapEditor } from "@/hooks/use-tiptap-editor";
 
 // --- Tiptap UI ---
 import { LineHeightButton } from "@/components/tiptap-ui/line-height-button";
-import { useLineHeightDropDownMenu } from "@/components/tiptap-ui/line-height-dropdown-menu";
+import { useLineHeightDropdownMenu } from "@/components/tiptap-ui/line-height-dropdown-menu";
 
 import { Button, ButtonGroup } from "@/components/tiptap-ui-primitive/button";
 import {
@@ -19,16 +19,22 @@ import {
 } from "@/components/tiptap-ui-primitive/dropdown-menu";
 import { Card, CardBody } from "@/components/tiptap-ui-primitive/card";
 
+// --- Tiptap UI (helpers) ---
+import {
+  DEFAULT_LINE_HEIGHTS,
+  normalizeLineHeightOption,
+} from "@/components/tiptap-ui/line-height-button";
+
 /**
  * Dropdown menu component for selecting line height levels in a Tiptap editor.
  *
- * For custom dropdown implementations, use the `useLineHeightDropDownMenu` hook instead.
+ * For custom dropdown implementations, use the `useLineHeightDropdownMenu` hook instead.
  */
-export const LineHeightMenu = forwardRef(
+export const LineHeightDropdownMenu = forwardRef(
   (
     {
       editor: providedEditor,
-      levels = [1.5, 2.0, 4.0],
+      lineHeights = DEFAULT_LINE_HEIGHTS,
       hideWhenUnavailable = false,
       portal = false,
       onOpenChange,
@@ -38,9 +44,9 @@ export const LineHeightMenu = forwardRef(
   ) => {
     const { editor } = useTiptapEditor(providedEditor);
     const [isOpen, setIsOpen] = useState(false);
-    const { isVisible, isActive, canToggle, Icon } = useLineHeightDropDownMenu({
+    const { isVisible, isActive, canToggle, Icon } = useLineHeightDropdownMenu({
       editor,
-      levels,
+      lineHeights,
       hideWhenUnavailable,
     });
 
@@ -56,6 +62,10 @@ export const LineHeightMenu = forwardRef(
     if (!isVisible) {
       return null;
     }
+
+    const normalizedOptions = (lineHeights ?? DEFAULT_LINE_HEIGHTS)
+      .map(normalizeLineHeightOption)
+      .filter((option) => option.value != null);
 
     return (
       <DropdownMenu modal open={isOpen} onOpenChange={handleOpenChange}>
@@ -82,12 +92,15 @@ export const LineHeightMenu = forwardRef(
           <Card>
             <CardBody>
               <ButtonGroup>
-                {levels.map((level) => (
-                  <DropdownMenuItem key={`line-height-${level}`} asChild>
+                {normalizedOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={`line-height-${option.value}`}
+                    asChild
+                  >
                     <LineHeightButton
                       editor={editor}
-                      level={level}
-                      text={`Line Height ${level}`}
+                      lineHeight={option.value}
+                      text={option.label}
                       showTooltip={false}
                     />
                   </DropdownMenuItem>
@@ -101,6 +114,6 @@ export const LineHeightMenu = forwardRef(
   }
 );
 
-LineHeightMenu.displayName = "LineHeightMenu";
+LineHeightDropdownMenu.displayName = "LineHeightDropdownMenu";
 
-export default LineHeightMenu;
+export default LineHeightDropdownMenu;

@@ -1,279 +1,195 @@
 "use client";
-import { useCallback, useEffect, useState } from "react"
-import { NodeSelection, TextSelection } from "@tiptap/pm/state"
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 // --- Hooks ---
-import { useTiptapEditor } from "@/hooks/use-tiptap-editor"
-
-// --- Lib ---
-import {
-  findNodePosition,
-  isNodeInSchema,
-  isNodeTypeSelected,
-  isValidPosition,
-  selectionWithinConvertibleTypes,
-} from "@/lib/tiptap-utils"
+import { useTiptapEditor } from "@/hooks/use-tiptap-editor";
 
 // --- Icons ---
-import { HeadingOneIcon } from "@/components/tiptap-icons/heading-one-icon"
-import { HeadingTwoIcon } from "@/components/tiptap-icons/heading-two-icon"
-import { HeadingThreeIcon } from "@/components/tiptap-icons/heading-three-icon"
-import { HeadingFourIcon } from "@/components/tiptap-icons/heading-four-icon"
-import { HeadingFiveIcon } from "@/components/tiptap-icons/heading-five-icon"
-import { HeadingSixIcon } from "@/components/tiptap-icons/heading-six-icon";
+import { LineHeightIcon } from "@/components/tiptap-icons/line-height-icon";
 
-export const headingIcons = {
-  1: HeadingOneIcon,
-  2: HeadingTwoIcon,
-  3: HeadingThreeIcon,
-  4: HeadingFourIcon,
-  5: HeadingFiveIcon,
-  6: HeadingSixIcon,
-}
-
-export const HEADING_SHORTCUT_KEYS = {
-  1: "ctrl+alt+1",
-  2: "ctrl+alt+2",
-  3: "ctrl+alt+3",
-  4: "ctrl+alt+4",
-  5: "ctrl+alt+5",
-  6: "ctrl+alt+6",
-}
+// --- Lib ---
+import { isMarkInSchema } from "@/lib/tiptap-utils";
 
 /**
- * Checks if heading can be toggled in the current editor state
+ * Default line-height options used by the dropdown.
+ * Values are unitless numbers passed directly to CSS `line-height`.
  */
-export function canToggle(editor, level, turnInto = true) {
-  if (!editor || !editor.isEditable) return false
-  if (
-    !isNodeInSchema("heading", editor) ||
-    isNodeTypeSelected(editor, ["image"])
-  )
-    return false
+export const DEFAULT_LINE_HEIGHTS = [
+  { label: "1.0", value: 1.0 },
+  { label: "1.5", value: 1.5 },
+  { label: "2.0", value: 2.0 },
+  { label: "2.5", value: 2.5 },
+  { label: "3.0", value: 3.0 },
+];
 
-  if (!turnInto) {
-    return level
-      ? editor.can().setNode("heading", { level })
-      : editor.can().setNode("heading");
+export const LINE_HEIGHT_SHORTCUT_KEYS = {
+  "1.0": "ctrl+shift+1",
+  "1.5": "ctrl+shift+2",
+  "2.0": "ctrl+shift+3",
+  "2.5": "ctrl+shift+4",
+  "3.0": "ctrl+shift+5",
+};
+
+/**
+ * Maps line-height values to the icon used in the UI.
+ * Currently all levels share the same `LineHeightIcon`, but this is kept
+ * extensible for future customization.
+ */
+export const lineHeightIcons = {
+  "1.0": LineHeightIcon,
+  "1.5": LineHeightIcon,
+  "2.0": LineHeightIcon,
+  "2.5": LineHeightIcon,
+  "3.0": LineHeightIcon,
+};
+
+export function normalizeLineHeightOption(option) {
+  if (!option) return { label: "Line height", value: null };
+
+  if (typeof option === "number" || typeof option === "string") {
+    const num = Number(option);
+    if (Number.isNaN(num)) return { label: String(option), value: null };
+    return { label: String(num), value: num };
   }
 
-  // Ensure selection is in nodes we're allowed to convert
-  if (
-    !selectionWithinConvertibleTypes(editor, [
-      "paragraph",
-      "heading",
-      "bulletList",
-      "orderedList",
-      "taskList",
-      "blockquote",
-      "codeBlock",
-    ])
-  )
-    return false
+  const { label, value } = option;
+  const resolvedValue = value ?? Number(label);
 
-  // Either we can set heading directly on the selection,
-  // or we can clear formatting/nodes to arrive at a heading.
-  return level
-    ? editor.can().setNode("heading", { level }) || editor.can().clearNodes()
-    : editor.can().setNode("heading") || editor.can().clearNodes();
+  return {
+    label: label ?? String(resolvedValue ?? "Line height"),
+    value: typeof resolvedValue === "number" ? resolvedValue : null,
+  };
 }
 
 /**
- * Checks if heading is currently active
+ * Checks if line-height commands are available in the current editor state.
+ * This relies on the `textStyle` mark and `toggleTextStyle` command being present.
  */
-export function isHeadingActive(editor, level) {
-  if (!editor || !editor.isEditable) return false
+export function canToggle(editor) {
+  if (!editor || !editor.isEditable) return false;
 
-  if (Array.isArray(level)) {
-    return level.some((l) => editor.isActive("heading", { level: l }));
+  return (
+    isMarkInSchema("textStyle", editor) &&
+    typeof editor.commands?.toggleTextStyle === "function"
+  );
+}
+
+/**
+ * Returns the currently active line-height from the `textStyle` mark.
+ */
+export function getActiveLineHeight(editor) {
+  if (!editor || !editor.isEditable) return null;
+
+  return editor.getAttributes("textStyle")?.lineHeight ?? null;
+}
+
+/**
+ * Checks if a given line-height is currently active.
+ */
+export function isLineHeightActive(editor, lineHeight) {
+  if (!editor || !editor.isEditable) return false;
+
+  const active = getActiveLineHeight(editor);
+  if (lineHeight == null) {
+    return active != null;
   }
 
-  return level
-    ? editor.isActive("heading", { level })
-    : editor.isActive("heading");
+  return String(active) === String(lineHeight);
 }
 
 /**
- * Toggles heading in the editor
+ * Toggles (sets/unsets) the line-height on the current selection using
+ * the `toggleTextStyle` command from `TextStyle` / `LineHeight`.
  */
-export function toggleHeading(editor, level) {
-  if (!editor || !editor.isEditable) return false
+export function toggleLineHeight(editor, lineHeight) {
+  if (!editor || !editor.isEditable || lineHeight == null) return false;
 
-  const levels = Array.isArray(level) ? level : [level]
-  const toggleLevel = levels.find((l) => canToggle(editor, l))
-
-  if (!toggleLevel) return false
-
-  try {
-    const view = editor.view
-    let state = view.state
-    let tr = state.tr
-
-    // No selection, find the cursor position
-    if (state.selection.empty || state.selection instanceof TextSelection) {
-      const pos = findNodePosition({
-        editor,
-        node: state.selection.$anchor.node(1),
-      })?.pos
-      if (!isValidPosition(pos)) return false
-
-      tr = tr.setSelection(NodeSelection.create(state.doc, pos))
-      view.dispatch(tr)
-      state = view.state
-    }
-
-    const selection = state.selection
-    let chain = editor.chain().focus()
-
-    // Handle NodeSelection
-    if (selection instanceof NodeSelection) {
-      const firstChild = selection.node.firstChild?.firstChild
-      const lastChild = selection.node.lastChild?.lastChild
-
-      const from = firstChild
-        ? selection.from + firstChild.nodeSize
-        : selection.from + 1
-
-      const to = lastChild
-        ? selection.to - lastChild.nodeSize
-        : selection.to - 1
-
-      const resolvedFrom = state.doc.resolve(from)
-      const resolvedTo = state.doc.resolve(to)
-
-      chain = chain
-        .setTextSelection(TextSelection.between(resolvedFrom, resolvedTo))
-        .clearNodes()
-    }
-
-    const isActive = levels.some((l) =>
-      editor.isActive("heading", { level: l }))
-
-    const toggle = isActive
-      ? chain.setNode("paragraph")
-      : chain.setNode("heading", { level: toggleLevel })
-
-    toggle.run()
-
-    editor.chain().focus().selectTextblockEnd().run()
-
-    return true
-  } catch {
-    return false
-  }
+  const value = String(lineHeight);
+  return editor.chain().focus().toggleTextStyle({ lineHeight: value }).run();
 }
 
 /**
- * Determines if the heading button should be shown
+ * Determines if the line-height button should be shown.
  */
 export function shouldShowButton(props) {
-  const { editor, level, hideWhenUnavailable } = props
+  const { editor, hideWhenUnavailable } = props;
 
-  if (!editor || !editor.isEditable) return false
-  if (!isNodeInSchema("heading", editor)) return false
-
-  if (hideWhenUnavailable && !editor.isActive("code")) {
-    if (Array.isArray(level)) {
-      return level.some((l) => canToggle(editor, l));
-    }
-    return canToggle(editor, level);
+  if (!editor || !editor.isEditable) return false;
+  if (hideWhenUnavailable) {
+    return canToggle(editor);
   }
 
-  return true
+  return true;
 }
 
 /**
- * Custom hook that provides heading functionality for Tiptap editor
+ * Custom hook that provides line-height functionality for the Tiptap editor.
  *
- * @example
- * ```tsx
- * // Simple usage
- * function MySimpleHeadingButton() {
- *   const { isVisible, isActive, handleToggle, Icon } = useLineHeight({ level: 1 })
- *
- *   if (!isVisible) return null
- *
- *   return (
- *     <button
- *       onClick={handleToggle}
- *       aria-pressed={isActive}
- *     >
- *       <Icon />
- *       Heading 1
- *     </button>
- *   )
- * }
- *
- * // Advanced usage with configuration
- * function MyAdvancedHeadingButton() {
- *   const { isVisible, isActive, handleToggle, label, Icon } = useLineHeight({
- *     level: 2,
- *     editor: myEditor,
- *     hideWhenUnavailable: true,
- *     onToggled: (isActive) => console.log('Heading toggled:', isActive)
- *   })
- *
- *   if (!isVisible) return null
- *
- *   return (
- *     <MyButton
- *       onClick={handleToggle}
- *       aria-label={label}
- *       aria-pressed={isActive}
- *     >
- *       <Icon />
- *       Toggle Heading 2
- *     </MyButton>
- *   )
- * }
- * ```
+ * For most use-cases you'll want to use this via `LineHeightButton`
+ * or `LineHeightDropdownMenu`.
  */
 export function useLineHeight(config) {
   const {
     editor: providedEditor,
     level,
+    lineHeight, // optional alias for clarity
     hideWhenUnavailable = false,
     onToggled,
-  } = config
+  } = config || {};
 
-  const { editor } = useTiptapEditor(providedEditor)
-  const [isVisible, setIsVisible] = useState(true)
-  const canToggleState = canToggle(editor, level)
-  const isActive = isHeadingActive(editor, level)
+  const { editor } = useTiptapEditor(providedEditor);
+  const [isVisible, setIsVisible] = useState(true);
+
+  const normalizedOption = useMemo(
+    () => normalizeLineHeightOption(lineHeight ?? level),
+    [lineHeight, level]
+  );
+
+  const targetLineHeight = normalizedOption.value;
+  const canToggleState = canToggle(editor) && targetLineHeight != null;
+  const isActive = isLineHeightActive(editor, targetLineHeight);
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor) return;
 
     const handleSelectionUpdate = () => {
-      setIsVisible(shouldShowButton({ editor, level, hideWhenUnavailable }))
-    }
+      setIsVisible(
+        shouldShowButton({ editor, hideWhenUnavailable }) &&
+          targetLineHeight != null
+      );
+    };
 
-    handleSelectionUpdate()
+    handleSelectionUpdate();
 
-    editor.on("selectionUpdate", handleSelectionUpdate)
+    editor.on("selectionUpdate", handleSelectionUpdate);
 
     return () => {
-      editor.off("selectionUpdate", handleSelectionUpdate)
+      editor.off("selectionUpdate", handleSelectionUpdate);
     };
-  }, [editor, level, hideWhenUnavailable])
+  }, [editor, hideWhenUnavailable, targetLineHeight]);
 
   const handleToggle = useCallback(() => {
-    if (!editor) return false
+    if (!editor || targetLineHeight == null) return false;
 
-    const success = toggleHeading(editor, level)
+    const success = toggleLineHeight(editor, targetLineHeight);
     if (success) {
-      onToggled?.()
+      onToggled?.();
     }
-    return success
-  }, [editor, level, onToggled])
+
+    return success;
+  }, [editor, onToggled, targetLineHeight]);
+
+  const label = `Line height ${normalizedOption.label}`;
+  const key = normalizedOption.label;
 
   return {
     isVisible,
     isActive,
     handleToggle,
     canToggle: canToggleState,
-    label: `Heading ${level}`,
-    shortcutKeys: HEADING_SHORTCUT_KEYS[level],
-    Icon: headingIcons[level],
-  }
+    label,
+    lineHeight: targetLineHeight,
+    shortcutKeys: LINE_HEIGHT_SHORTCUT_KEYS[key],
+    Icon: lineHeightIcons[key] ?? LineHeightIcon,
+  };
 }

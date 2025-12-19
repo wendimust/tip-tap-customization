@@ -9,71 +9,51 @@ import { LineHeightIcon } from "@/components/tiptap-icons/line-height-icon";
 
 // --- Tiptap UI ---
 import {
-  lineHeightIcons,
   isLineHeightActive,
   canToggle,
+  getActiveLineHeight,
+  normalizeLineHeightOption,
+  DEFAULT_LINE_HEIGHTS,
   shouldShowButton,
 } from "@/components/tiptap-ui/line-height-button";
 
 /**
- * Gets the currently active line-height level from the available levels
+ * Gets the currently active line-height option from the available options
  */
-export function getActiveLineHeightLevel(editor, levels = [1.5, 2.0, 4.0]) {
+export function getActiveLineHeightOption(
+  editor,
+  lineHeights = DEFAULT_LINE_HEIGHTS
+) {
   if (!editor || !editor.isEditable) return undefined;
-  return levels.find((level) => isLineHeightActive(editor, level));
+
+  const active = getActiveLineHeight(editor);
+  if (active == null) return undefined;
+
+  const normalized = (lineHeights ?? DEFAULT_LINE_HEIGHTS)
+    .map(normalizeLineHeightOption)
+    .filter((option) => option.value != null);
+
+  return (
+    normalized.find((option) => Number(option.value) === Number(active)) ??
+    undefined
+  );
 }
 
 /**
  * Custom hook that provides line-height dropdown menu functionality for Tiptap editor
- *
- * @example
- * ```tsx
- * // Simple usage
- * function MyLineHeightDropdown() {
- *   const {
- *     isVisible,
- *     activeLevel,
- *     isAnyLineHeightActive,
- *     canToggle,
- *     levels,
- *   } = useLineHeightDropdownMenu()
- *
- *   if (!isVisible) return null
- *
- *   return (
- *     <DropdownMenu>
- *       // dropdown content
- *     </DropdownMenu>
- *   )
- * }
- *
- * // Advanced usage with configuration
- * function MyAdvancedLineHeightDropdown() {
- *   const {
- *     isVisible,
- *     activeLevel,
- *   } = useLineHeightDropdownMenu({
- *     editor: myEditor,
- *     levels: [1, 2, 3],
- *     hideWhenUnavailable: true,
- *   })
- *
- *   // component implementation
- * }
- * ```
  */
 export function useLineHeightDropdownMenu(config) {
   const {
     editor: providedEditor,
-    levels = [1.5, 2.0, 4.0],
+    lineHeights = DEFAULT_LINE_HEIGHTS,
     hideWhenUnavailable = false,
   } = config || {};
 
   const { editor } = useTiptapEditor(providedEditor);
   const [isVisible, setIsVisible] = useState(true);
 
-  const activeLevel = getActiveLineHeightLevel(editor, levels);
-  const isActive = isLineHeightActive(editor);
+  const activeOption = getActiveLineHeightOption(editor, lineHeights);
+  const isActive = isLineHeightActive(editor, activeOption?.value);
   const canToggleState = canToggle(editor);
 
   useEffect(() => {
@@ -81,7 +61,8 @@ export function useLineHeightDropdownMenu(config) {
 
     const handleSelectionUpdate = () => {
       setIsVisible(
-        shouldShowButton({ editor, hideWhenUnavailable, level: levels })
+        shouldShowButton({ editor, hideWhenUnavailable }) &&
+          Boolean(lineHeights?.length)
       );
     };
 
@@ -92,15 +73,15 @@ export function useLineHeightDropdownMenu(config) {
     return () => {
       editor.off("selectionUpdate", handleSelectionUpdate);
     };
-  }, [editor, hideWhenUnavailable, levels]);
+  }, [editor, hideWhenUnavailable, lineHeights]);
 
   return {
     isVisible,
-    activeLevel,
+    activeOption,
     isActive,
     canToggle: canToggleState,
-    levels,
+    lineHeights,
     label: "Line Height",
-    Icon: activeLevel ? lineHeightIcons[activeLevel] : LineHeightIcon,
+    Icon: LineHeightIcon,
   };
 }
